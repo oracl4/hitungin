@@ -1,1 +1,1 @@
-python /home/oracl4/project/hitungin/src/streamer/app.py
+python src/streamer/app.py

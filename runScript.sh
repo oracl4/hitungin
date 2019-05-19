@@ -1,2 +1,2 @@
-sh -x src/counter/runScript.sh &
-sh -x src/streamer/runScript.sh && fg
+sh -x src/streamer/runScript.sh &
+sh -x src/counter/runScript.sh && fg

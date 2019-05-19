@@ -20,6 +20,19 @@ import imutils
 import time
 import dlib
 import cv2
+import urllib
+import mysql.connector 
+
+#UNCOMMENT THIS AFTER CONFIGURE CONNECTION
+#SQL Connector
+# mydb = mysql.connector.connect( 
+# host="192.168.43.238",
+# user="AdminHitungin",
+# passwd="",
+# database="hitungin"
+# ) 
+
+# mycursor = mydb.cursor()
 
 # construct the argument parse and parse the arguments
 ap = argparse.ArgumentParser()
@@ -77,10 +90,13 @@ trackableObjects = {}
 # initialize the total number of frames processed thus far, along
 # with the total number of objects that have moved either up or down
 totalFrames = 0
-totalDown = 0
-totalUp = 0
-totalLeft = 0
-totalRight = 0
+
+#Variable Lantai
+totalLantai3 = 0
+totalLantai4 = 0
+
+#StateChange
+stateChange=0
 
 # start the frames per second throughput estimator
 fps = FPS().start()
@@ -194,22 +210,17 @@ while True:
 			# add the bounding box coordinates to the rectangles list
 			rects.append((startX, startY, endX, endY))
 
-	# draw a horizontal line in the center of the frame -- once an
-	# object crosses this line we will determine whether they were
-	# moving 'up' or 'down'
+	#Draw the Line to Figure out the Boundaries of the Counting Method
 	cv2.line(frame, (W // 2, 0), (W // 2, H), (0, 255, 255), 2)
 
 	cv2.line(frame, (10, 0), (10, H), (0, 255, 255), 2)
 
 	cv2.line(frame, (W-10, 0), (W-10, H), (0, 255, 255), 2)
 
-	#Up Right Line
 	cv2.line(frame, (W // 2, marginUp), (W-10, marginUp), (0, 0, 255), 2)
 	
-	#Bottom Left Line
 	cv2.line(frame, (10, marginDown), (W // 2, marginDown), (255, 0, 0), 2)
-	
-	
+
 	# use the centroid tracker to associate the (1) old object
 	# centroids with (2) the newly computed object centroids
 	objects = ct.update(rects)
@@ -223,6 +234,8 @@ while True:
 		# if there is no existing trackable object, create one
 		if to is None:
 			to = TrackableObject(objectID, centroid)
+			totalLantai3 += 1	#Update the totalLantai if Someone is Tracked
+			stateChange = 1		#Change stateChange flag so program will Push the data
 
 		# otherwise, there is a trackable object so we can utilize it
 		# to determine direction
@@ -232,50 +245,60 @@ while True:
 			# us in which direction the object is moving (negative for
 			# 'up' and positive for 'down')
 			
-			#Kekiri Negatif dan Kekanan Positif
+			#Kecepatan sebuah object = posisi dia sekarang - rata" posisi dia sebelumnya
+			
+			#Kiri = Kecepatan (-) dan Kanan = Kecepatan (+)
 			x = [c[0] for c in to.centroids]
 			directionX = centroid[0] - np.mean(x)
-			
-			#Keatas Negatif dan Kebawah Positif
+			#print(directionX)
+
+			#Atas = Kecepatan (-) dan Bawah = Kecepatan (+)
 			y = [c[1] for c in to.centroids]
 			directionY = centroid[1] - np.mean(y)
+			#print(directionY)
 			
 			to.centroids.append(centroid)
 
+			#Bagian ini merupakan bagian terpenting dari program, kita menerapkan batasan-batasan yang diperlukan
+			#Untuk dapat menghitung sebuah object berjalan ke sebuah bagian tertentu berdasarkan "Posisi dia berada" dan "Kecepatan X dan Y"
 			# check to see if the object has been counted or not
 			if not to.counted:
-				# if the direction is negative (indicating the object
-				# is moving up) AND the centroid is above the center
-				# line, count the object
 				# Going Left
-				if directionX < 0 and centroid[0] < marginLeft and centroid[1] < marginDown :
-					totalLeft += 1
-					to.counted = True
+				#if directionX < 0 and centroid[0] < marginLeft and centroid[1] < marginDown :
+				#	totalLantai3 += 1
+				#	to.counted = True
 
-				# if the direction is positive (indicating the object
-				# is moving down) AND the centroid is below the
-				# center line, count the object
 				# Going Right
-				elif directionX > 0 and centroid[0] > marginRight and centroid[1] > marginUp :
-					totalRight += 1
-					to.counted = True
+				#elif directionX > 0 and centroid[0] > marginRight and centroid[1] > marginUp :
+				#	totalLantai3 += 1
+				#	to.counted = True
 				
-				# if the direction is positive (indicating the object
-				# is moving down) AND the centroid is below the
-				# center line, count the object
 				# Going Down
-				elif directionY > 20 and centroid[0] < W // 2 and centroid[1] > marginDown :
-					totalDown += 1
+				if directionY > 20 and centroid[0] < W // 2 and centroid[1] > marginDown :
+					totalLantai3 -= 1
+					stateChange = 1
 					to.counted = True
 
-				# if the direction is positive (indicating the object
-				# is moving down) AND the centroid is below the
-				# center line, count the object
 				# Going Up
 				elif directionY < -20 and centroid[0] > W // 2 and centroid[1] < marginUp :
-					totalUp += 1
+					totalLantai3 -= 1
+					totalLantai4 += 1
+					stateChange = 1
 					to.counted = True
 				
+				#Someone From Left going Down				
+				elif directionY > 10 and centroid[0] < W // 2 and centroid[1] > marginDown - 50:
+					totalLantai3 -= 2
+					stateChange = 1
+					to.counted = True
+
+				#Someone Right Left going Up				
+				elif directionY < -10 and centroid[0] > W // 2 and centroid[1] < marginUp + 50:
+					totalLantai3 -= 2
+					stateChange = 1
+					totalLantai4 +=1
+					to.counted = True
+					
 		# store the trackable object in our dictionary
 		trackableObjects[objectID] = to
 
@@ -289,12 +312,28 @@ while True:
 	# construct a tuple of information we will be displaying on the
 	# frame
 	info = [
-		("Up", totalUp),
-		("Left", totalLeft),
-		("Down", totalDown),
-		("Right", totalRight),
+		("TotalLantai3", totalLantai3),
+		("TotalLantai4", totalLantai4),
 		("Status", status),
 	]
+
+	#UNCOMMENT THIS AFTER CONFIGURE CONNECTION
+	# #Upload data to Database Lantai 3
+	# sql = "INSERT INTO record3(value) VALUES (%s)"
+	# sql2 = "INSERT INTO record4(value) VALUES (%s)"
+	
+	# if(stateChange==1):
+	# 	#Update Lantai3		
+	# 	val = (totalLantai3,) 
+	# 	mycursor.execute(sql, val)
+	# 	mydb.commit()
+
+	# 	#Update Lantai4
+	# 	val = (totalLantai4,) 
+	# 	mycursor.execute(sql2, val)
+	# 	mydb.commit()
+		
+	# 	stateChange=0
 
 	# loop over the info tuples and draw them on our frame
 	for (i, (k, v)) in enumerate(info):
